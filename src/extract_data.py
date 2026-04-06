@@ -2,8 +2,13 @@
 import pandas as pd
 from newspaper import Article
 from tqdm import tqdm
-import numpy as np
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+import nest_asyncio
+nest_asyncio.apply()
+import asyncio
+import pandas as pd
+import re
+from datetime import datetime, timezone
+from telethon import TelegramClient
 
 
 ###################### News extraction ######################
@@ -58,51 +63,108 @@ def scrape_content(df, filename):
 
 ###################### Tweets extraction ######################
 
-# Initialize VADER sentiment analyzer
-analyzer = SentimentIntensityAnalyzer()
+import nest_asyncio
+nest_asyncio.apply()
 
+import asyncio
+import pandas as pd
+import re
+from datetime import datetime, timezone
+from telethon import TelegramClient
 
-def process_social_data(file_path):
-    # Load dataset and format dates
-    df = pd.read_csv(file_path, low_memory=False)
-    df["dt_obj"] = pd.to_datetime(df["timestamp"], format="ISO8601", errors="coerce")
-    df["date"] = df["dt_obj"].dt.date
-    # Filter for 2023 and S&P 500 keywords
-    df_2023 = df[df["dt_obj"].dt.year == 2023].copy()
-    if df_2023.empty:
-        return None
-    keywords = r"\$SPY|\$SPX|S&P 500|SP500|Stock Market"
-    mask = df_2023["description"].str.contains(
-        keywords, case=False, na=False
-    ) | df_2023["embed_title"].str.contains(keywords, case=False, na=False)
-    df_spy = df_2023[mask].copy()
-    # Merge content and calculate sentiment scores
-    df_spy["full_content"] = (
-        df_spy["embed_title"].fillna("") + " " + df_spy["description"].fillna("")
-    )
-    df_spy["sentiment"] = df_spy["full_content"].apply(
-        lambda x: analyzer.polarity_scores(x)["compound"]
-    )
-    # Simulate engagement metrics using log-normal distribution
-    n = len(df_spy)
-    intensity = df_spy["sentiment"].abs()
-    # Generate likes, retweets, and followers based on sentiment intensity
-    df_spy["likes"] = (
-        (np.random.lognormal(1.5, 2.0, n) * (1 + intensity)).astype(int).clip(0, 50000)
-    )
-    df_spy["retweets"] = (df_spy["likes"] * np.random.uniform(0.1, 0.3, n)).astype(int)
-    df_spy["followers"] = np.random.lognormal(5.0, 3.0, n).astype(int).clip(0, 1000000)
-    # Final column selection and date object conversion
-    cols = [
-        "date",
-        "full_content",
-        "likes",
-        "retweets",
-        "followers",
-        "sentiment",
-        "url",
+# REGEX
+NASDAQ_RE = re.compile(
+    r'\b(nasdaq|qqq|ndx|nq|nas100|nasdaq100|nvda|aapl|msft|'
+    r'googl|amzn|meta|tsla|faang|mag7|buy|sell|bullish|bearish|long|short)\b',
+    re.IGNORECASE
+)
+
+# remove emojis
+def clean_text(text):
+    return re.sub(r'[^\x00-\x7F]+', ' ', text)
+
+# Main function
+def scrape_telegram_nasdaq(API_ID, API_HASH, PHONE, output_path):
+
+    CHANNELS = [
+        "nas100masters",
+        "nas100_trading_signal",
+        "nasdaq_freesignals",
+        "EagleSpiritforexacademyNASDAQ100",
+        "FREEUS30XAUUSDSIGNALS",
+        "Nas100_Trading_forex_signal",
+        "financialjuice",
+        "TradingViewIdeas",
+        "investing_com",
+        "forexsignalsfactory",
+        "wallstreetmemes",
+        "marketsignals",
+        "vanillafinancenews",
+        "FREEDOMFINANCE",
+        "money",
+        "finance",
+        "curvefi",
+        "personalfinancesg",
+        "finance1",
+        "SerezhaCalls",
+        "nasdaq_r",
+        "stocks",
+        "x_stocks_bot",
+        "stocks_0"
     ]
-    final_df = df_spy[cols].copy()
-    final_df["date"] = pd.to_datetime(final_df["date"])
-    print(f"Extraction complete: {len(final_df)} records for 2023")
-    return final_df
+
+    START_DATE = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    END_DATE   = datetime(2026, 4, 1, tzinfo=timezone.utc)
+
+    async def collect():
+        client = TelegramClient("session", API_ID, API_HASH)
+        await client.start(phone=PHONE)
+
+        all_posts = []
+
+        for channel in CHANNELS:
+            try:
+                entity = await client.get_entity(channel)
+
+                async for msg in client.iter_messages(entity, offset_date=END_DATE):
+
+                    if msg.date < START_DATE:
+                        break
+
+                    if not msg.text:
+                        continue
+
+                    if not NASDAQ_RE.search(msg.text):
+                        continue
+
+                    all_posts.append({
+                        "id": f"{channel}_{msg.id}",
+                        "channel": channel,
+                        "date": msg.date.strftime("%Y-%m-%d"),
+                        "text": clean_text(msg.text)[:520],
+                        "views": getattr(msg, "views", 0) or 0
+                    })
+
+            except Exception as e:
+                print(f"Error with {channel}: {e}")
+
+        await client.disconnect()
+        return all_posts
+
+    # run async
+    posts = asyncio.run(collect())
+
+    # dataframe
+    if not posts:
+        print("No data collected")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(posts).drop_duplicates("id")
+    # sauvegarde CSV
+    df.to_csv(output_path, index=False, encoding="utf-8-sig")
+
+    print(f"Collected {len(df)} messages")
+    print(f"Days covered: {df['date'].nunique()}")
+    print(f"Saved to: {output_path}")
+
+    return df
