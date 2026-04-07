@@ -3,9 +3,9 @@ import pandas as pd
 from newspaper import Article
 from tqdm import tqdm
 import nest_asyncio
+
 nest_asyncio.apply()
 import asyncio
-import pandas as pd
 import re
 from datetime import datetime, timezone
 from telethon import TelegramClient
@@ -64,24 +64,22 @@ def scrape_content(df, filename):
 ###################### Tweets extraction ######################
 
 import nest_asyncio
+
 nest_asyncio.apply()
 
-import asyncio
-import pandas as pd
-import re
-from datetime import datetime, timezone
-from telethon import TelegramClient
 
 # REGEX
 NASDAQ_RE = re.compile(
-    r'\b(nasdaq|qqq|ndx|nq|nas100|nasdaq100|nvda|aapl|msft|'
-    r'googl|amzn|meta|tsla|faang|mag7|buy|sell|bullish|bearish|long|short)\b',
-    re.IGNORECASE
+    r"\b(nasdaq|qqq|ndx|nq|nas100|nasdaq100|nvda|aapl|msft|"
+    r"googl|amzn|meta|tsla|faang|mag7|buy|sell|bullish|bearish|long|short)\b",
+    re.IGNORECASE,
 )
+
 
 # remove emojis
 def clean_text(text):
-    return re.sub(r'[^\x00-\x7F]+', ' ', text)
+    return re.sub(r"[^\x00-\x7F]+", " ", text)
+
 
 # Main function
 def scrape_telegram_nasdaq(API_ID, API_HASH, PHONE, output_path):
@@ -110,11 +108,11 @@ def scrape_telegram_nasdaq(API_ID, API_HASH, PHONE, output_path):
         "nasdaq_r",
         "stocks",
         "x_stocks_bot",
-        "stocks_0"
+        "stocks_0",
     ]
 
     START_DATE = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    END_DATE   = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    END_DATE = datetime(2026, 4, 1, tzinfo=timezone.utc)
 
     async def collect():
         client = TelegramClient("session", API_ID, API_HASH)
@@ -127,7 +125,6 @@ def scrape_telegram_nasdaq(API_ID, API_HASH, PHONE, output_path):
                 entity = await client.get_entity(channel)
 
                 async for msg in client.iter_messages(entity, offset_date=END_DATE):
-
                     if msg.date < START_DATE:
                         break
 
@@ -137,13 +134,15 @@ def scrape_telegram_nasdaq(API_ID, API_HASH, PHONE, output_path):
                     if not NASDAQ_RE.search(msg.text):
                         continue
 
-                    all_posts.append({
-                        "id": f"{channel}_{msg.id}",
-                        "channel": channel,
-                        "date": msg.date.strftime("%Y-%m-%d"),
-                        "text": clean_text(msg.text)[:520],
-                        "views": getattr(msg, "views", 0) or 0
-                    })
+                    all_posts.append(
+                        {
+                            "id": f"{channel}_{msg.id}",
+                            "channel": channel,
+                            "date": msg.date.strftime("%Y-%m-%d"),
+                            "text": clean_text(msg.text)[:520],
+                            "views": getattr(msg, "views", 0) or 0,
+                        }
+                    )
 
             except Exception as e:
                 print(f"Error with {channel}: {e}")

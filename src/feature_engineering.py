@@ -56,3 +56,38 @@ def run_feature_engineering_pipeline(news_df, lexicon_dir, model):
                 )
 
     return pd.DataFrame(embedded_data)
+
+
+############# Main Pipeline Function for DistilBERT #########
+def run_document_embedding_bpe(news_df, model, batch_size=16):
+    """
+    Embeds ALL documents in the dataset without any lexicon filtering.
+    Optimized for speed using batch processing on CPU.
+    """
+    embedded_data = []
+
+    # Cleaning: Remove empty texts
+    valid_news = news_df.dropna(subset=["clean"]).copy()
+    valid_news = valid_news[valid_news["clean"].str.strip() != ""]
+
+    print(f"Starting batch embedding for {len(valid_news)} articles...")
+
+    # Extract texts for encoding
+    texts_to_encode = valid_news["clean"].tolist()
+
+    # BATCH EMBEDDING
+    embeddings = model.encode(
+        texts_to_encode, batch_size=batch_size, show_progress_bar=True
+    )
+
+    # Reconstruction: Mapping vectors back to dates and headlines
+    for idx, (row_idx, row) in enumerate(valid_news.iterrows()):
+        embedded_data.append(
+            {
+                "date": row["date"],
+                "embedding": embeddings[idx],
+                "headline": row["headline"],
+            }
+        )
+
+    return pd.DataFrame(embedded_data)

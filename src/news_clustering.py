@@ -1,152 +1,100 @@
 import pandas as pd
 import numpy as np
-from sklearn.cluster import AgglomerativeClustering, KMeans
-from pyclustering.cluster.kmedians import kmedians
+from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import normalize
 import plotly.graph_objects as go
 import plotly.express as px
 from sklearn.manifold import TSNE
 import plotly.figure_factory as ff
 from scipy.cluster.hierarchy import linkage
+from sklearn.metrics import silhouette_samples
+from scipy.spatial.distance import cosine
 
 
-################# Clustering evaluation ##############
-################# Clustering evaluation ##############
-def run_clustering_evaluation(X, k_range=range(2, 11), min_samples=1):
+################# Clustering evaluation (HAC Only - Period Based) ##############
+def run_hac_evaluation_period(
+    X_full, df_features, start_date, end_date, k_range=range(2, 11), min_samples=2
+):
     """
-    Evaluates different clustering algorithms using the Silhouette Score.
-    min_samples: Minimum number of samples required per cluster for HAC stability.
+    Évalue le HAC sur une période temporelle stricte pour trouver le K optimal.
     """
-    X_norm = normalize(X)
-    X_list = X.tolist()
+    # 1. Filtrage temporel
+    mask = (df_features["date"] >= start_date) & (df_features["date"] <= end_date)
+    X_sub = X_full[mask.values]
 
-    results = {"k": [], "Agglomerative": [], "K-Means": [], "K-Medians": []}
+    if len(X_sub) < max(k_range):
+        print(
+            f"Attention: Pas assez de documents ({len(X_sub)}) pour tester k={max(k_range)}."
+        )
+        k_range = range(2, max(2, len(X_sub)))  # Sécurité
+
+    results = {"k": [], "Silhouette_Score": []}
 
     for k in k_range:
         results["k"].append(k)
 
-        # Method A: Agglomerative Clustering with Stability Logic
         try:
-            curr_X_hac = X.copy()
+            curr_X = X_sub.copy()
             labels_hac = None
-            # Loop until all clusters meet min_samples requirement
+
+            # Logique de stabilité
             while True:
-                if len(curr_X_hac) < k:
+                if len(curr_X) < k:
                     labels_hac = None
                     break
+
                 model = AgglomerativeClustering(
                     n_clusters=k, metric="cosine", linkage="average"
                 )
-                temp_labels = model.fit_predict(curr_X_hac)
+                temp_labels = model.fit_predict(curr_X)
                 counts = pd.Series(temp_labels).value_counts()
                 to_remove = counts[counts < min_samples].index
 
                 if len(to_remove) == 0:
                     labels_hac = temp_labels
                     break
-                # Filter out samples from small clusters and retry
-                curr_X_hac = curr_X_hac[~np.isin(temp_labels, to_remove)]
 
-            if labels_hac is not None:
-                score_hac = silhouette_score(curr_X_hac, labels_hac, metric="cosine")
-                results["Agglomerative"].append(score_hac)
+                curr_X = curr_X[~np.isin(temp_labels, to_remove)]
+
+            # Score de silhouette
+            if labels_hac is not None and len(np.unique(labels_hac)) > 1:
+                score = silhouette_score(curr_X, labels_hac, metric="cosine")
+                results["Silhouette_Score"].append(score)
             else:
-                results["Agglomerative"].append(np.nan)
-        except Exception:
-            results["Agglomerative"].append(np.nan)
+                results["Silhouette_Score"].append(np.nan)
 
-        # Method B: K-Means++ (Standard)
-        try:
-            model_km = KMeans(
-                n_clusters=k, init="k-means++", n_init=10, random_state=42
-            )
-            labels_km = model_km.fit_predict(X_norm)
-            score_km = silhouette_score(X_norm, labels_km)
-            results["K-Means"].append(score_km)
         except Exception:
-            results["K-Means"].append(np.nan)
-
-        # Method C: K-Medians (Standard)
-        try:
-            initial_medians = X_list[:k]
-            model_kmed = kmedians(X_list, initial_medians)
-            model_kmed.process()
-            clusters = model_kmed.get_clusters()
-            labels_kmed = np.zeros(len(X_list), dtype=int)
-            for cluster_idx, cluster in enumerate(clusters):
-                for sample_idx in cluster:
-                    labels_kmed[sample_idx] = cluster_idx
-            results["K-Medians"].append(
-                silhouette_score(X, labels_kmed, metric="manhattan")
-            )
-        except Exception:
-            results["K-Medians"].append(np.nan)
+            results["Silhouette_Score"].append(np.nan)
 
     return pd.DataFrame(results)
 
 
-################# Viualization of Silhouette scores ##############
-def plot_clustering_comparison(results_df):
-    """
-    Génère un graphique Plotly comparant les scores de silhouette.
-    """
+def plot_hac_evaluation(results_df, title="HAC Silhouette Scores"):
+    """Affiche le graphique d'évaluation"""
     fig = go.Figure()
-
-    methods = [
-        ("Agglomerative", "#2ecc71", "circle"),  # Vert
-        ("K-Means", "#3498db", "square"),  # Bleu
-        ("K-Medians", "#e74c3c", "triangle-up"),  # Rouge
-    ]
-
-    for column, color, symbol in methods:
-        fig.add_trace(
-            go.Scatter(
-                x=results_df["k"],
-                y=results_df[column],
-                mode="lines+markers",
-                name=column,
-                line=dict(color=color, width=2),
-                marker=dict(symbol=symbol, size=10),
-            )
+    fig.add_trace(
+        go.Scatter(
+            x=results_df["k"],
+            y=results_df["Silhouette_Score"],
+            mode="lines+markers",
+            name="HAC Score",
+            line=dict(color="#2ecc71", width=2),
+            marker=dict(symbol="circle", size=10),
         )
-
+    )
     fig.update_layout(
-        title="<b>Clustering methods comparison</b><br><sup>Silhouette Score</sup>",
+        title=f"<b>{title}</b>",
         xaxis_title="Number of Clusters (k)",
         yaxis_title="Average Silhouette Score",
         template="plotly_white",
-        hovermode="x unified",
-        legend=dict(yanchor="bottom", y=0.01, xanchor="right", x=0.99),
     )
     fig.show()
-    return
-
-
-################### Centroid calculation for event signatures ##############
-def calculate_event_centroids(X, labels):
-    """
-    Calculates the centroid of each cluster using the MEDIAN vector.
-    As per the paper, the median is more robust to outliers within clusters.
-    """
-    unique_labels = np.unique(labels)
-    centroids = {}
-
-    for label in unique_labels:
-        # Extract all news embeddings belonging to this specific cluster
-        cluster_samples = X[labels == label]
-
-        # Compute the median across each of the 300 dimensions
-        # axis=0 means we calculate the median for each feature across all articles
-        event_signature = np.median(cluster_samples, axis=0)
-        centroids[label] = event_signature
-
-    return centroids
+    return fig
 
 
 ################## Visualization of HAC clusters in 2D with Plotly ##############
 def visualize_hac_tsne_range(
-    X_full, df_features, start_date, end_date, k, perplexity=30, min_samples=1
+    X_full, df_features, start_date, end_date, k, perplexity=30, min_samples=2
 ):
     """
     Filters data, applies stability logic, and shows t-SNE visualization.
@@ -174,29 +122,27 @@ def visualize_hac_tsne_range(
         if len(to_remove) == 0:
             final_labels = temp_labels
             break
-        # Remove and update indices to keep metadata in sync
+
         mask_stable = ~np.isin(temp_labels, to_remove)
         curr_X = curr_X[mask_stable]
         curr_indices = curr_indices[mask_stable]
 
-    # Synchronize metadata with the stable articles
     stable_df = sub_df.iloc[curr_indices].copy()
     stable_df["Cluster"] = final_labels.astype(str)
 
-    # t-SNE on stable articles
     actual_perplexity = min(perplexity, max(1, len(curr_X) - 1))
     tsne = TSNE(
         n_components=2,
         perplexity=actual_perplexity,
         random_state=42,
         init="pca",
-        learning_rate="auto",
+        metric="cosine",
     )
     X_2d = tsne.fit_transform(curr_X)
+
     stable_df["X"] = X_2d[:, 0]
     stable_df["Y"] = X_2d[:, 1]
 
-    # Plotly
     fig = px.scatter(
         stable_df,
         x="X",
@@ -210,34 +156,23 @@ def visualize_hac_tsne_range(
     fig.update_traces(
         marker=dict(size=12, opacity=0.8, line=dict(width=1, color="white"))
     )
-    fig.update_layout(xaxis_title="t-SNE 1", yaxis_title="t-SNE 2")
-
     return fig
 
 
-################## Final HAC ##############
-
-
+################## Final HAC & Dendrogram ##############
 def compute_stable_hac_linkage(
     X_full, df_features, start_date, end_date, k, min_samples=2
 ):
-    """
-    Computes the stable HAC linkage matrix Z as described in the paper.
-    Returns: Z (Linkage Matrix), stable_headlines (List), and X_stable (Matrix).
-    """
-    # Temporal filtering
     mask = (df_features["date"] >= start_date) & (df_features["date"] <= end_date)
     X_sub = X_full[mask.values]
     sub_df = df_features.loc[mask].copy()
 
-    # Stable HAC Logic (Stability Condition)
     curr_X = X_sub.copy()
     curr_indices = np.arange(len(sub_df))
 
     while True:
         if len(curr_X) < k:
-            return None, None, None  # Case where we can't form k stable clusters
-
+            return None, None, None
         model = AgglomerativeClustering(
             n_clusters=k, metric="cosine", linkage="average"
         )
@@ -246,43 +181,31 @@ def compute_stable_hac_linkage(
         to_remove = counts[counts < min_samples].index
 
         if len(to_remove) == 0:
-            break  # Stable configuration achieved
+            break
 
-        # Remove articles from small clusters and update indices
         mask_stable = ~np.isin(temp_labels, to_remove)
         curr_X = curr_X[mask_stable]
         curr_indices = curr_indices[mask_stable]
 
-    # Compute the Final Linkage Matrix (Z) on the stable subset
-    # Using 'average' and 'cosine' as per the paper
     Z = linkage(curr_X, method="average", metric="cosine")
-
-    # Get the headlines of the final stable articles
     stable_headlines = sub_df.iloc[curr_indices]["headline"].tolist()
-
     return Z, stable_headlines, curr_X
 
 
-################## Dendrogram visualization with Plotly ##############
 def plot_hac_dendrogram_plotly(Z, leaf_labels, start_date, end_date):
-    """
-    Visualizes the precomputed linkage matrix Z as an interactive Plotly dendrogram.
-    """
     if Z is None:
         print("No stable clustering results to plot.")
         return None
 
-    # ff.create_dendrogram takes data but we pass our precomputed Z via linkagefun
-    # We pass a dummy array for X because we already have the matrix Z
-    dummy_X = np.zeros((len(leaf_labels), 300))
+    # Corrigé : dummy_X n'a plus besoin d'être de taille 300
+    dummy_X = np.zeros((len(leaf_labels), 1))
 
     fig = ff.create_dendrogram(
         dummy_X,
         orientation="bottom",
         labels=leaf_labels,
-        linkagefun=lambda x: Z,  # We force Plotly to use our stable linkage
+        linkagefun=lambda x: Z,
     )
-
     fig.update_layout(
         title=f"<b>Stable HAC Dendrogram</b><br><sup>Period: {start_date} to {end_date}</sup>",
         width=1000,
@@ -291,5 +214,98 @@ def plot_hac_dendrogram_plotly(Z, leaf_labels, start_date, end_date):
         xaxis=dict(title="Financial News Articles (Stable Subset)"),
         yaxis=dict(title="Cosine Distance"),
     )
-
     return fig
+
+
+######################### Outliers removal #######################
+
+
+################### Extraction des clusters stables ##################
+def get_stable_clusters(X_full, df_features, start_date, end_date, k, min_samples=2):
+    """
+    Exécute la logique de stabilité HAC et retourne les données brutes
+    prêtes pour l'outlier removal.
+    """
+    mask = (df_features["date"] >= start_date) & (df_features["date"] <= end_date)
+    X_sub = X_full[mask.values]
+    sub_df = df_features.loc[mask].copy()
+
+    curr_X = X_sub.copy()
+    curr_indices = np.arange(len(sub_df))
+
+    while True:
+        if len(curr_X) < k:
+            return None, None, None
+        model = AgglomerativeClustering(
+            n_clusters=k, metric="cosine", linkage="average"
+        )
+        temp_labels = model.fit_predict(curr_X)
+        counts = pd.Series(temp_labels).value_counts()
+        to_remove = counts[counts < min_samples].index
+
+        if len(to_remove) == 0:
+            break
+
+        mask_stable = ~np.isin(temp_labels, to_remove)
+        curr_X = curr_X[mask_stable]
+        curr_indices = curr_indices[mask_stable]
+
+    stable_df = sub_df.iloc[curr_indices].copy()
+    stable_df["Cluster"] = temp_labels  # Ajout des labels finaux
+
+    return curr_X, stable_df, temp_labels
+
+
+################### Event Signatures (Centroïdes) ####################
+def calculate_event_centroids(X, labels):
+    """
+    Calcule le centroïde (vecteur médian) pour chaque cluster.
+    La médiane est plus robuste aux outliers extrêmes.
+    """
+    unique_labels = np.unique(labels)
+    centroids = {}
+
+    for label in unique_labels:
+        cluster_samples = X[labels == label]
+        # axis=0 : on calcule la médiane pour chaque dimension du vecteur
+        event_signature = np.median(cluster_samples, axis=0)
+        centroids[label] = event_signature
+
+    return centroids
+
+
+#################### Advanced Outlier Removal #######################
+def remove_news_outliers_advanced(X, labels, percentile_threshold=20):
+    """
+    Double filtre de Carta et al. :
+    1. Ambiguïté (Silhouette)
+    2. Isolement (Similarité Cosinus avec la médiane du cluster)
+    """
+    n_samples = len(X)
+
+    # Sécurité : la silhouette a besoin d'au moins 2 clusters
+    if len(np.unique(labels)) < 2:
+        return np.ones(n_samples, dtype=bool)
+
+    # 1. Calcul de l'ambiguïté (Silhouette individuelle)
+    sil_scores = silhouette_samples(X, labels, metric="cosine")
+
+    # 2. Calcul de l'isolement (Distance par rapport au centroïde)
+    centroids = calculate_event_centroids(X, labels)
+    sim_scores = np.zeros(n_samples)
+
+    for i in range(n_samples):
+        cluster_label = labels[i]
+        centroid = centroids[cluster_label]
+        # scipy.spatial.distance.cosine retourne la distance (0 à 2).
+        # La similarité est 1 - distance.
+        sim_scores[i] = 1 - cosine(X[i], centroid)
+
+    # Définition des seuils (ex: les 20% les plus mauvais)
+    sil_thresh = np.percentile(sil_scores, percentile_threshold)
+    sim_thresh = np.percentile(sim_scores, percentile_threshold)
+
+    # On conserve l'article SEULEMENT s'il réussit les DEUX tests
+    mask_keep = (sil_scores >= sil_thresh) & (sim_scores >= sim_thresh)
+
+    return mask_keep

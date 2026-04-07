@@ -5,6 +5,7 @@ from sklearn.feature_extraction.text import CountVectorizer
 import os
 import re
 
+
 ######################  Preprocessing and Tokenisation SpaCy ######################
 def preprocess_spacy(text, nlp):
     """
@@ -16,7 +17,8 @@ def preprocess_spacy(text, nlp):
     doc = nlp(text)
     # We keep only alphabetic tokens that are not stopwords and have more than 1 characters
     tokens = [
-        t.lemma_.lower() for t in doc 
+        t.lemma_.lower()
+        for t in doc
         if t.is_alpha and not t.is_stop and len(t.text) > 1
     ]
     return " ".join(tokens)
@@ -92,7 +94,9 @@ def visualize_daily_lexicon(date_str):
     """
     Loads a daily lexicon CSV and plots the f(j) distribution with thresholds.
     """
-    FILE_PATH = f"../data/processed/daily_lexicons_full_spacy/lexicon_full_{date_str}.csv"
+    FILE_PATH = (
+        f"../data/processed/daily_lexicons_full_spacy/lexicon_full_{date_str}.csv"
+    )
 
     # Load and sort data
     df = pd.read_csv(FILE_PATH)
@@ -146,24 +150,25 @@ def visualize_daily_lexicon(date_str):
     fig.show()
 
 
-####################### BPE versions of the above functions #######################
+######################  Preprocessing pour DistilBERTa ######################
 
 
 def preprocess_bpe(text, tokenizer):
     """
-    Cleans the text (removes numbers and punctuation) and then applies BPE.
+    Nettoie le texte et applique la tokenisation BPE de RoBERTa.
     """
     if not isinstance(text, str):
-        return ""   
-    # 1. CLEANING (Regular Expression)
-    # [^a-zA-ZÀ-ÿ\s] : we keep only letters (including accented ones) and spaces.
-    # Everything else (numbers, parentheses, dashes, %, etc.) is replaced with a space.
-    clean_text = re.sub(r'[^a-zA-ZÀ-ÿ\s]', ' ', text)
-    # Delete spaces at the beginning and end, and reduce multiple spaces to a single space
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()   
-    # 2. TOKENISATION BPE
+        return ""
+
+    # Nettoyage
+    clean_text = re.sub(r"[^a-zA-ZÀ-ÿ\s]", " ", text)
+    clean_text = re.sub(r"\s+", " ", clean_text).strip()
+
+    # Tokenisation BPE
     tokens = tokenizer.tokenize(clean_text)
+
     return " ".join(tokens)
+
 
 ######################  Daily Lexicon generation (BPE Aware) ######################
 def build_daily_lexicon_bpe(
@@ -175,7 +180,7 @@ def build_daily_lexicon_bpe(
     filtered_output_dir,
 ):
     """
-    Implémente la formule de Marginal Screening f(j), sauvegarde le lexique quotidien 
+    Implémente la formule de Marginal Screening f(j), sauvegarde le lexique quotidien
     et exporte la DTM. Adapté pour gérer les jetons BPE.
     """
     N = len(news_train)
@@ -183,16 +188,18 @@ def build_daily_lexicon_bpe(
     # a. Vectorization (Binary 0/1) and Frequency Filtering
     # Changements critiques ici pour le BPE :
     vectorizer = CountVectorizer(
-        binary=True,  
+        binary=True,
         max_df=0.90,
         min_df=5,
-        lowercase=False, # IMPORTANT : Ne pas modifier la casse des jetons BPE
-        token_pattern=None, # IMPORTANT : Désactiver le regex par défaut
-        tokenizer=lambda x: x.split(), # IMPORTANT : Séparer uniquement par les espaces qu'on a ajoutés
+        lowercase=False,  # IMPORTANT : Ne pas modifier la casse des jetons BPE
+        token_pattern=None,  # IMPORTANT : Désactiver le regex par défaut
+        tokenizer=lambda x: (
+            x.split()
+        ),  # IMPORTANT : Séparer uniquement par les espaces qu'on a ajoutés
         # On retire stop_words="english" car les stopwords BPE ont souvent un "Ġ" devant
         # (ex: "Ġthe"), ce qui fait que la liste standard de sklearn ne les trouvera pas.
     )
-    
+
     try:
         dtm_sparse = vectorizer.fit_transform(news_train["clean"])
         words = vectorizer.get_feature_names_out()
@@ -203,11 +210,11 @@ def build_daily_lexicon_bpe(
     os.makedirs(dtm_output_dir, exist_ok=True)
     dtm_df = pd.DataFrame(dtm_sparse.toarray(), columns=words)
     dtm_df.insert(0, "article_date", news_train["date"].values)
-    
+
     dtm_path = os.path.join(dtm_output_dir, f"dtm_bpe_{current_date}.csv")
     dtm_df.to_csv(dtm_path, index=False)
 
-    # c. Marginal Screening Formula f(j): 
+    # c. Marginal Screening Formula f(j):
     # Formule : f(j) = (1/N) * sum( X_k(j) * delta_k )
     deltas = news_train["date"].map(prices_map).fillna(0).values
     sum_product = np.array(dtm_sparse.T.dot(deltas)).flatten()
@@ -242,14 +249,16 @@ def visualize_daily_lexicon_bpe(date_str):
     Charge un CSV de lexique BPE quotidien et trace la distribution de f(j).
     """
 
-    FILE_PATH = f"../data/processed/daily_lexicons_full_bpe/lexicon_bpe_full_{date_str}.csv"
+    FILE_PATH = (
+        f"../data/processed/daily_lexicons_full_bpe/lexicon_bpe_full_{date_str}.csv"
+    )
 
     df = pd.read_csv(FILE_PATH)
     df = df.sort_values("score", ascending=False).reset_index(drop=True)
-    
+
     p20 = np.percentile(df["score"], 20)
     p80 = np.percentile(df["score"], 80)
-    
+
     df["type"] = "Neutral"
     df.loc[df["score"] >= p80, "type"] = "Positive"
     df.loc[df["score"] <= p20, "type"] = "Negative"
@@ -268,16 +277,22 @@ def visualize_daily_lexicon_bpe(date_str):
         labels={"score": "Score f(j)", "word": "BPE Tokens", "type": "Category"},
         hover_data={"score": ":.5f"},
     )
-    
+
     fig.add_hline(
-        y=p80, line_dash="dash", line_color="#27ae60",
-        annotation_text=f"P80 Threshold ({p80:.5f})", annotation_position="top right",
+        y=p80,
+        line_dash="dash",
+        line_color="#27ae60",
+        annotation_text=f"P80 Threshold ({p80:.5f})",
+        annotation_position="top right",
     )
     fig.add_hline(
-        y=p20, line_dash="dash", line_color="#c0392b",
-        annotation_text=f"P20 Threshold ({p20:.5f})", annotation_position="bottom right",
+        y=p20,
+        line_dash="dash",
+        line_color="#c0392b",
+        annotation_text=f"P20 Threshold ({p20:.5f})",
+        annotation_position="bottom right",
     )
-    
+
     fig.update_layout(
         xaxis_title="BPE Tokens (Sorted by Score)",
         yaxis_title="Marginal Screening Score f(j)",
