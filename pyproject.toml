@@ -8,6 +8,7 @@ dependencies = [
     "gensim>=4.4.0",
     "lxml-html-clean>=0.4.4",
     "lxml[html-clean]>=6.0.2",
+    "matplotlib>=3.10.8",
     "nbformat>=5.10.4",
     "newspaper3k>=0.2.8",
     "numpy>=2.4.4",
@@ -26,5 +27,6 @@ dependencies = [
     "transformers>=5.5.0",
     "twscrape>=0.17.0",
     "vadersentiment>=3.3.2",
+    "wordcloud>=1.9.6",
     "yfinance>=1.2.0",
 ]

@@ -9,6 +9,18 @@ import plotly.figure_factory as ff
 from scipy.cluster.hierarchy import linkage
 from sklearn.metrics import silhouette_samples
 from scipy.spatial.distance import cosine
+import matplotlib.pyplot as plt
+from wordcloud import WordCloud, STOPWORDS
+
+
+# --- 1. FONCTION DE PARSING DES EMBEDDINGS ---
+def parse_embedding_string(emb_str):
+    """
+    Convertit la chaîne de caractères du CSV (ex: "[ 0.12 \n -0.34 ...]")
+    en un vrai tableau numpy utilisable pour le clustering.
+    """
+    clean_str = str(emb_str).replace("[", "").replace("]", "").replace("\n", " ")
+    return np.fromstring(clean_str, sep=" ")
 
 
 ################# Clustering evaluation (HAC Only - Period Based) ##############
@@ -309,3 +321,63 @@ def remove_news_outliers_advanced(X, labels, percentile_threshold=20):
     mask_keep = (sil_scores >= sil_thresh) & (sim_scores >= sim_thresh)
 
     return mask_keep
+
+
+
+def generate_model_wordclouds(df_clean, model_name, text_column="headline"):
+    """
+    Génère et affiche un nuage de mots pour chaque cluster d'un modèle donné.
+    """
+    # S'il n'y a pas de données (ex: la logique de stabilité a échoué), on arrête
+    if df_clean is None or df_clean.empty:
+        print(f"Pas de données pour le modèle {model_name}.")
+        return
+
+    clusters = sorted(df_clean["Cluster"].unique())
+    num_clusters = len(clusters)
+    
+    print(f"\nGénération des nuages de mots pour {model_name} ({num_clusters} clusters)...")
+
+    # Création d'une grille de sous-graphiques (1 ligne, num_clusters colonnes)
+    fig, axes = plt.subplots(1, num_clusters, figsize=(8 * num_clusters, 8))
+    
+    # Si on n'a qu'un seul cluster, axes n'est pas une liste, on le force en liste
+    if num_clusters == 1:
+        axes = [axes]
+
+    # Configuration des Stopwords
+    stopwords = set(STOPWORDS)
+    # Vous pouvez ajouter ici du bruit financier spécifique à ignorer
+    stopwords.update(["say", "says", "said", "will", "new", "year", "stock", "stocks", "market","s"])
+
+    for ax, cluster_id in zip(axes, clusters):
+        # 1. Isoler les textes du cluster spécifique
+        cluster_texts = df_clean[df_clean["Cluster"] == cluster_id][text_column]
+        
+        plot_words = ''
+        
+        # 2. Votre logique de nettoyage (itération, string, lower, split)
+        for val in cluster_texts:
+            val = str(val)
+            tokens = val.split()
+            for i in range(len(tokens)):
+                tokens[i] = tokens[i].lower()
+            plot_words += " ".join(tokens) + " "
+            
+        # 3. Création du WordCloud
+        wordcloud = WordCloud(
+            width=800, 
+            height=800,
+            background_color='white',
+            stopwords=stopwords,
+            min_font_size=10,
+            colormap='cividis' # Une belle palette de couleurs au choix (viridis, magma, plasma...)
+        ).generate(plot_words)
+        
+        # 4. Affichage dans le sous-graphique dédié
+        ax.imshow(wordcloud, interpolation='bilinear')
+        ax.set_title(f"{model_name} | Cluster {cluster_id}", fontsize=24, fontweight='bold', pad=20)
+        ax.axis("off")
+
+    plt.tight_layout()
+    plt.show()

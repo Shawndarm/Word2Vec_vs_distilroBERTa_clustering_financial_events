@@ -76,8 +76,8 @@ def run_document_embedding_bpe(news_df, model, batch_size=16):
     texts_to_encode = valid_news["clean"].tolist()
 
     # BATCH EMBEDDING
-    embeddings = model.encode(
-        texts_to_encode, batch_size=batch_size, show_progress_bar=True
+    embeddings = model.encode( # mean pooling is applied by default in the SentenceTransformer model
+        texts_to_encode, batch_size=batch_size, show_progress_bar=True 
     )
 
     # Reconstruction: Mapping vectors back to dates and headlines
