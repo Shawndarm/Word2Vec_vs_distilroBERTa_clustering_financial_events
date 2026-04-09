@@ -1,6 +1,6 @@
-# financial-event-clustering
+# Financial-event-clustering and RAG implementation
 
-> **Detecting and analyzing financial market events from news and social media using NLP pipelines — NASDAQ, Jan–Mar 2026.**
+> **Detecting and analyzing financial market events from news using NLP pipelines — NASDAQ, Jan–Mar 2026.**
 
 This project builds an end-to-end NLP system that automatically clusters financial news articles into coherent groups corresponding to real-world market events. Two embedding paradigms are compared on real NASDAQ data, and a local RAG system enables natural language querying of the entire document base.
 
@@ -46,7 +46,7 @@ Both pipelines are evaluated on the same periods and compared on silhouette scor
 | Source | Type | Volume |
 |---|---|---|
 | GDELT Project (via BigQuery) | Financial news articles | 736 articles, 90 days |
-| Telegram API (Telethon) | Social media / trading signals | 3,720 messages, 90 days |
+| Telegram API (Telethon) | Social media / trading signals | 3,720 messages, 90 days | Not used
 | Yahoo Finance (`yfinance`) | NASDAQ daily prices | 62 trading days |
 
 **Period covered**: January 1 — March 31, 2026
@@ -172,7 +172,7 @@ Example clustering on the period **Feb 25 – Mar 3, 2026** (Iran conflict week)
 
 ## Authors
 
-Roland Dutauziet & Maeva — MSc Data Science / NLP Project, 2026
+Roland Dutauziet & Maeva N'guessan— MSc Data Science / NLP Project, 2026
 
 
 
