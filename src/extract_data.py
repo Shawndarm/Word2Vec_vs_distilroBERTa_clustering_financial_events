@@ -4,7 +4,7 @@ from newspaper import Article
 from tqdm import tqdm
 import nest_asyncio
 
-nest_asyncio.apply()
+
 import asyncio
 import re
 from datetime import datetime, timezone
@@ -62,9 +62,6 @@ def scrape_content(df, filename):
 
 
 ###################### Tweets extraction ######################
-
-import nest_asyncio
-
 nest_asyncio.apply()
 
 
