@@ -8,6 +8,7 @@ dependencies = [
     "deptry>=0.25.1",
     "dotenv>=0.9.9",
     "gensim>=4.4.0",
+    "git-filter-repo>=2.47.0",
     "lxml-html-clean>=0.4.4",
     "matplotlib>=3.10.8",
     "nbformat>=5.10.4",
